@@ -1,0 +1,774 @@
+INFOS:   AK60-6    -    CubeMars    -    t_motors
+--------------------------------
+Red led: error
+Blue led: power normal
+Green led: there is comminication
+
+**AK60 Notes:**
+
+- if you wanna change mode, you must stop motor, and reset power, and after switch the mode
+- there are 4 mode : "guide mode", "servo mode" and "MIT power mode", "fw update mode"
+- there are 2 main working motor mode : "servo mode" and "MIT power mode",
+    
+    Servo Mode: (***)
+    
+    - Servo mode is a control mode used for speed and position control of motors.
+    - In this mode, the speed and position of the motor are continuously monitored and controlled using feedback signals.
+    - Feedback signals are typically provided by encoders or other position sensors.
+    - Servo motors are commonly used in applications requiring high precision, speed, and position control.
+    
+    ---
+    
+    MIT (Motor Integrated Tuning) Mode:  (**)
+    
+    - MIT mode is an automatic tuning or auto-tuning mode found in motor drives.
+    - In this mode, the motor drive automatically analyzes the dynamic behavior between the motor and the load and adjusts control parameters (such as PID controller parameters) automatically.
+    - This is used to achieve optimal performance of the motor and ensure system stability.
+    - MIT mode can optimize the motor's performance more quickly and accurately compared to manual adjustments.
+- if you wanna do fw update, after this you shoul make motor calibration !
+
+
+
+
+
+
+
+------------------------------------------------------------------------------
+--  SERİAL : 921600 br  ------------------------------------------------------
+------------------------------------------------------------------------------
+
+LOGIC SERVO MODE: 
+Frame Head(0x02)  + Data Length(X bytes lenght + 1) + Data Frame + Data(X byte) + Checksum(2 BYTE) +  Tail(0X03)
+
+
+Data Frames:
+-------------------------------------------------		
+typedef enum {
+	COMM_FW_VERSION = 0,
+	COMM_JUMP_TO_BOOTLOADER,
+	COMM_ERASE_NEW_APP,
+	COMM_WRITE_NEW_APP_DATA,
+	COMM_GET_VALUES, // Get motor operating parameters
+	COMM_SET_DUTY, // Motor operates in duty cycle mode
+	COMM_SET_CURRENT, // Motor operates in current loop mode
+	COMM_SET_CURRENT_BRAKE, // Motor operates in current brake mode
+	COMM_SET_RPM, // Motor operates in speed loop mode
+	COMM_SET_POS, // Motor operates in position loop mode
+	COMM_SET_HANDBRAKE, // Motor operates in handbrake current loop mode
+	COMM_SET_DETECT, // Motor real-time feedback current position command
+	COMM_ROTOR_POSITION=22,// Motor feedback current position
+	COMM_GET_VALUES_SETUP=50,// Motor single or multiple parameter acquisition command
+	COMM_SET_POS_SPD=91, // Motor operates in position-speed loop mode
+	COMM_SET_POS_MULTI=92, // Set motor motion to single-turn mode
+	COMM_SET_POS_SINGLE=93, // Set motor motion to multi-turn mode, range ±100 turns
+	COMM_SET_POS_UNLIMITED=94, // Reserved
+	COMM_SET_POS_ORIGIN=95, // Set motor origin
+} COMM_PACKET_ID;
+
+
+-------------------------------------------------------------
+             [COMM_SET_DUTY]
+REQ: [ 02 05 05 00 00 4E 20 29 F6 03 ]  : GOTO, 0.20 duty cycle
+REQ: [ 02 05 05 FF FF B1 E0 77 85 03 ]  : GOTO, -0.20 duty cycle
+
+Duty=(float)buffer_get_int32(data, &ind) / 100000.0) //Value as the received 4-byte
+data/10000.0
+
+-------------------------------------------------------------
+
+             [COMM_SET_CURRENT]
+REQ: [ 02 05 06 00 00 13 88 8B 25 03 ]  : GOTO, 5 A IQ
+REQ: [ 02 05 06 FF FF EC 78 E3 05 03 ]  : GOTO, -5 A IQ
+
+Current=(float)buffer_get_int32(data, &ind) / 1000.0  
+data/1000.0
+
+------------------------------------------------------------
+
+// todo others SET s params in document
+
+-------------------------------------------------------------
+
+REQ: [ 02 01 04 40 84 03 ]  : Get MOTOR Params
+
+RSP: [ 02 49 04 01 66 FC D0 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+       00 00 00 00 FF FF FF F3 00 F6 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF 00 16
+       D7 AD 00 0A 6F 19 40 7E 00 00 00 00 00 00 00 00 00 00 00 00 00 04 4D 53 03 02 05 16 00 1A B6
+       03 C9 B5 03 ] : Motor's Responce
+	   
+	   Responce simple parse:
+			02 (Frame Head) + 
+			49 (Data Length) + 
+			04 (Data Frame) + 
+			Mos temperature (2 bytes) + 
+			Motor temperature (2 bytes) + 
+			Output current (4 bytes) + 
+			Input current (4 bytes) + 
+			Id current (4 bytes)
+			+ Iq current (4 bytes) + 
+			Throttle Value (2 bytes) + 
+			Motor Speed (4 bytes) + 
+			Input voltage (2 bytes) + 
+			Reserved (24 bytes) + 
+			Motor Status Code (1 byte) + 
+			Motor Outer Loop Position Value
+			(4 bytes) + 
+			Motor ID Number (1 byte) + 
+			Temperature Reserved Value (6 bytes) + 
+			Vd Voltage (4 bytes) + 
+			Vq Voltage (4 bytes) + 
+			CRC (2 byte ??) + 
+			03 (Frame Tail)
+			
+			
+--------------------------------------------------------
+
+      [COMM_GET_VALUES_SETUP]
+REQ: [ 02 05 32 00 00 00 01 58 4C 03 ]  : Get motor temp , @LOGIC_GETTER
+RSP: [ 02 03 32 00 81 2A 6C 03 ]        : Feedback motor temperature
+ 
+@LOGIC_GETTER : bit bit get ask,
+ 
+Bit 32-19: reserved
+Bit 18   : ask Motor ID , receive: 1 byte motor id
+Bit 17   : ask Motor Position , receive: 4 byte  
+Bit 16   : ask error flag , receive: 1 byte  
+Bit 10-15: Reserved
+Bit 9    : ask Motor in volt , receive: 2 byte 
+Bit 8    : ask Motor speed , receive: 4 byte 
+Bit 7    : ask Motor duty , receive: 2 byte 
+Bit 6    : ask Motor iq current , receive: 4 byte 
+Bit 5    : ask Motor id current , receive: 4 byte 
+Bit 4    : ask Motor input current , receive: 4 byte 
+Bit 3    : ask Motor output current , receive: 4 byte 
+Bit 2    : ask Motor temp , receive: 2 byte 
+Bit 1    : ask MOS temp , receive: 2 byte 
+ 
+MOS temperature = (float)buffer_get_int16(data, &ind) / 10.0;
+Motor temperature = (float)buffer_get_int16(data, &ind) / 10.0;
+Output current = (float)buffer_get_int32(data, &ind) / 100.0;
+Input current = (float)buffer_get_int32(data, &ind) / 100.0;
+Throttle Value = (float)buffer_get_int16(data, &ind) / 1000.0;
+Motor Speed = (float)buffer_get_int32(data, &ind);
+Input voltage = (float)buffer_get_int16(data, &ind) / 10.0;
+Motor position = (float)buffer_get_int32(data, &ind) / 1000000.0;
+Motor ID number = data;
+ 
+ 
+ 
+--------------------------------------------------------
+
+             [COMM_SET_CURRENT_BRAKE]
+REQ: [ 02 02 0B 04 9C 7E 03 ]  : Motor sends current position every 10 ms after receiving this command
+
+
+
+
+--------------------------------------------------------
+
+REQ: [ 02 01 65 3C 03 03 ]  : GOTO MIT mode - Wait 3 - 5 second
+
+REQ: [ 02 01 64 2C 22 03 ]  : GOTO SERVO mode - Wait 3 - 5 second
+
+-------------------------------------------------------------------
+-----------------------------------------------------------------------
+
+MIT Mode: id: 9
+
+               [ID]
+REQ: [ 02 03 63 09 FC 56 30 03  ] : GOTO MIT Run Command 
+REQ: [ 02 03 63 09 FE 76 72 03  ] : GOTO MIT Set Origin Command 
+REQ: [ 02 03 63 09 FD 46 11 03  ] : GOTO MIT Exit Command 
+REQ: [ 02 10 60 60 60 60 7F FF 7F F0 00 00 07 FF 09 01 FF FF 44 4E 03 ] : GOTO MIT all params zero Command 
+REQ: [ 02 10 60 60 60 60 9E B7 7F F0 10 33 37 FF 09 01 FF FF 2B 16 03 ] : GOTO MIT P:3,KP:2,KD:1 params zero Command   
+REQ: [ 02 10 60 60 60 60 94 7A 7F F0 10 33 37 FF 09 01 FF FF D0 AB 03 ] : GOTO MIT P:2,KP:2,KD:1 params zero Command 
+                                                [ID]
+
+-----------------------------------------------------------------------------------------------   -
+----------------------------------------------------------------------
+
+REQ: [ 02 01 1E F3 FF 03]  : ? WHAT IS THIS , GUI STARTED ALWAYS ASK THIS ?
+
+
+
+--------------------------------------------------------------------------
+
+REQ: [ 02 02 5F 01 0E A0 03 ]  : TODO test et , Motor akım konumu döngüsünü konum döngüsü sıfır referans noktası olarak ayarlayın
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+----------------------------------------------------------------------------------
+----------------------------------------------------------------------------------
+--  CAN : - 1 Mbr    ----------------------------------------------------
+----------------------------------------------------------------------------------
+----------------------------------------------------------------------------------
+----------------------------------------------------------------------------------
+
+----------------------------------------
+Servo mode - CAN :  extanded id
+---------------------------------------
+
+Can ID bits          [28]-[8]           [7]-[0]
+Field name         Control mode      Source node ID
+
+Servo mode Periodic Receive Packet Inside:
+---------------------------------------
+Data[0]: Position High
+Data[1]: Position Low  , int16, range -32000~32000 represents -3200°~3200°.
+-
+Data[2]: Speed High
+Data[3]: Speed Low     , int16, range -32000~32000 represents -320000~320000 electrical RPM.
+-
+Data[4]: Current High
+Data[5]: Current Low   , int16, range -6000~6000 represents -60~60A.
+-
+Data[6]: Motor temp    , int8, range -20~127 represents the driver board temperature -20°C~127°C.
+-
+Data[7]: error codes   , uint8, 0 indicates no fault, 1 indicates motor over-temperature fault, 2 indicates over-current fault, 3 indicates over-voltage fault, 4 indicates under-voltage fault, 5 indicates encoder fault, 6 indicates MOSFET over-temperature fault, 7 indicates motor stall.
+-
+ 
+ 
+ 
+ 
+Servo Control modes:
+------------------------------
+Duty Cycle Mode: 0
+Current Loop Mode: 1
+Current Brake Mode: 2
+Speed Mode: 3
+Position Mode: 4
+Set Origin Mode: 5
+Position-Speed Loop Mode: 6
+
+typedef enum {
+	CAN_PACKET_SET_DUTY = 0, // Duty Cycle Mode
+	CAN_PACKET_SET_CURRENT, // Current Loop Mode
+	CAN_PACKET_SET_CURRENT_BRAKE, // Current Brake Mode
+	CAN_PACKET_SET_RPM, // Speed Mode
+	CAN_PACKET_SET_POS, // Position Mode
+	CAN_PACKET_SET_ORIGIN_HERE, // Set Origin Mode
+	CAN_PACKET_SET_POS_SPD, // Position-Speed Loop Mode
+} CAN_PACKET_ID;
+
+// todo bu modlar ve can mesajları dökümanda var, AMA BURASI Servo mode_ gerek olur mu? 
+
+
+
+
+
+
+
+-----------------------------------------------------------------------------------------
+----------------------------------------
+----------------------------------------
+MIT mode - CAN : standard frame , 1 Mhz
+---------------------------------------
+----------------------------------------
+
+
+Motor id: can frame id: ex: 1
+------------------------------------------------
+Enter Motor Control Mode:                    {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,0XFC }
+Exit Motor Control Mode:                     {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0XFD }
+Set Current Motor Position as zero position: {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0XFE }
+
+
+
+
+MIT mode Transmit Packet Inside:
+---------------------------------------
+Data[0]: Position High
+Data[1]: Position low
+
+Data[2]: Speed High
+Data[3]: [7-4] 4 bit , Speed low
+
+Data[3]: [3-0] 4 bit , kp High
+Data[4]: kp low
+
+Data[5]: kd High
+Data[6]: [7-4] 4 bit , kd low
+
+Data[6]: [3-0] 4 bit , current High
+Data[7]: current low
+
+
+
+ 
+
+
+
+
+
+MIT mode Periodic Receive Packet Inside:
+---------------------------------------
+Data[0]: motor id
+
+Data[1]: Position High
+Data[2]: Position Low  , int16, range -32000~32000 represents -3200°~3200°.
+-
+Data[3]: Speed High
+Data[4]: [7-4] 4 bit , Speed Low     , int16, range -32000~32000 represents -320000~320000 electrical RPM.
+-
+Data[4]: [3-0] 4 bit ,Current High
+Data[5]: Current Low   , int16, range -6000~6000 represents -60~60A.
+-
+Data[6]: Motor temp    , int8, range -20~127 represents the driver board temperature -20°C~127°C.
+-
+Data[7]: error codes   , uint8, 0 indicates no fault, 1 indicates motor over-temperature fault, 2 indicates over-current fault, 3 indicates over-voltage fault, 4 indicates under-voltage fault, 5 indicates encoder fault, 6 indicates MOSFET over-temperature fault, 7 indicates motor stall.
+-
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-----------------------------------------------------
+-----------------------------------------------------
+----- SOFTWARE INFOS --------------------------------
+-----------------------------------------------------
+
+
+
+
+
+
+
+
+
+MIT mode Transmit Packet  :
+------------------------------------------------------
+
+  typedef struct
+  {
+      float positionMin;
+      float positionMax;
+
+      float velocityMin;
+      float velocityMax;
+
+      float torqueMin;
+      float torqueMax;
+
+      float kpMin;
+      float kpMax;
+
+      float kdMin;
+      float kdMax;
+  } MotorParameters;
+  
+ const MotorParameters mMotorParameters = { -12.5,
+                                       12.5,
+                                       -50,
+                                       50,
+                                       -65,
+                                       65,
+                                       0,
+                                       500,
+                                       0,
+                                       5 };
+									   
+  int32_t  convFloatToUint(float val, float min, float max, uint8_t bits)
+  {
+      /* Limits. */
+      if (val > max)
+      {
+          val = max;
+      }
+      else if (val < min)
+      {
+          val = min;
+      }
+
+      float span = max - min;
+      return (int32_t)((val - min) * ((float)((1 << bits) - 1)) / span);
+  }
+
+  void   mit_can_move(/** id ? **/float position, float velocity, float torque, float kp, float kd)
+  {
+      int32_t pInt = convFloatToUint(position, mMotorParameters.positionMin, mMotorParameters.positionMax, 16);
+      int32_t vInt = convFloatToUint(velocity, mMotorParameters.velocityMin, mMotorParameters.velocityMax, 12);
+      int32_t tInt = convFloatToUint(torque, mMotorParameters.torqueMin, mMotorParameters.torqueMax, 12);
+      int32_t kpInt = convFloatToUint(kp, mMotorParameters.kpMin, mMotorParameters.kpMax, 12);
+      int32_t kdInt = convFloatToUint(kd, mMotorParameters.kdMin, mMotorParameters.kdMax, 12);
+
+      uint8_t data[8];
+      data[0] = pInt >> 8;
+      data[1] = pInt & 0xFF;
+      data[2] = vInt >> 4;
+      data[3] = ((vInt & 0xF) << 4 | (kpInt >> 8));
+      data[4] = kpInt & 0xFF;
+      data[5] = kdInt >> 4;
+      data[6] = ((kdInt & 0xF) << 4 | (tInt >> 8));
+      data[7] = tInt & 0xFF;
+
+      // data watch
+      std::cout << " .:\n";
+      std::cout << std::hex << (int)data[0] << " " << (int)data[1] << " " << (int)data[2] << " " << (int)data[3] << " " << (int)data[4] << " " << (int)data[5] << " " << (int)data[6] << " " << (int)data[7] << "  \n";
+      std::cout << " .:\n";
+  }
+  
+  
+
+
+
+
+
+MIT mode Receive Parse  :
+------------------------------------------------------
+
+
+int float_to_uint(float x, float x_min, float x_max, unsigned int bits){
+	/// Converts a float to an unsigned int, given range and number of bits ///
+	float span = x_max - x_min;
+	if(x < x_min) x = x_min;
+	else if(x > x_max) x = x_max;
+	return (int) ((x- x_min)*((float)((1<<bits)/span)));
+}
+ float uint_to_float(int x_int, float x_min, float x_max, int bits){
+	/// converts unsigned int to float, given range and number of bits ///
+	float span = x_max - x_min;
+	float offset = x_min;
+	return ((float)x_int)*span/((float)((1<<bits)-1)) + offset;
+}
+
+void mit_can_parse(CANMessage msg){
+	/// unpack ints from can buffer ///
+	int id = msg.data[0]; //Driver ID
+	int p_int = (msg.data[1]<<8)|msg.data[2]; // Motor Position Data
+	int v_int = (msg.data[3]<<4)|(msg.data[4]>>4); // Motor Speed Data
+	int i_int = ((msg.data[4]&0xF)<<8)|msg.data[5]; //Motor Torque Data
+	Int T_int = msg.data[6] ;
+	/// convert ints to floats ///
+	float p = uint_to_float(p_int, P_MIN, P_MAX, 16);
+	float v = uint_to_float(v_int, V_MIN, V_MAX, 12);
+	float i = uint_to_float(i_int, -I_MAX, I_MAX, 12);
+	float T =T_int;
+	
+	if(id == 1){
+		postion = p; // Read corresponding data based on ID
+		speed = v;
+		torque = i;
+		Temperature = T-40; // Temperature range: -40~215
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Servo mode: CAN packet parser
+void motor_receive(float* motor_pos,float* motor_spd,float* cur,int_8* temp,int_8* error,rx_message)
+{
+	int16_t pos_int = (rx_message)->Data[0] << 8 | (rx_message)->Data[1]);
+	int16_t spd_int = (rx_message)->Data[2] << 8 | (rx_message)->Data[3]);
+	int16_t cur_int = (rx_message)->Data[4] << 8 | (rx_message)->Data[5]);
+	&motor_pos= (float)( pos_int * 0.1f); // Motor Position
+	&motor_spd= (float)( spd_int * 10.0f);// Motor Speed
+	&motor_cur= (float) ( cur_int * 0.01f);// Motor Current
+	&motor_temp= (rx_message)->Data[6] ;// Motor Temperature
+	&motor_error= (rx_message)->Data[7] ;// Motor Error Code
+}
+
+
+
+
+Datas allangment way: -> Control software to AK60-6 motor driver
+-----------------------------------------------------------------------
+void buffer_append_int32(uint8_t* buffer, int32_t number, int32_t *index) {
+	buffer[(*index)++] = number >> 24;
+	buffer[(*index)++] = number >> 16;
+	buffer[(*index)++] = number >> 8;
+	buffer[(*index)++] = number;
+}
+void buffer_append_int16(uint8_t* buffer, int16_t number, int16_t *index) {
+	buffer[(*index)++] = number >> 8;
+	buffer[(*index)++] = number;
+}
+
+
+
+
+
+
+Error Codes:
+------------------------------------
+c == 0 ? ("No Error"): 
+c == 1 ? "Over temperature fault" : 
+c == 2 ? "Over current fault" : 
+c == 3 ? "Over voltage fault" : 
+c == 4 ? "Under voltage fault" : 
+c == 5 ? "Encoder fault" : 
+c == 6 ? "Phase current unbalance fault (The hardware may be damaged)" : 0)
+  
+  
+  
+  
+  
+  
+  
+Motor error status code:
+-----------------------------------------------
+typedef enum {
+FAULT_CODE_NONE = 0,
+FAULT_CODE_OVER_VOLTAGE,// Overvoltage
+FAULT_CODE_UNDER_VOLTAGE,// Undervoltage
+FAULT_CODE_DRV,// Driver fault
+FAULT_CODE_ABS_OVER_CURRENT,// Motor overcurrent
+FAULT_CODE_OVER_TEMP_FET,// MOS overtemperature
+FAULT_CODE_OVER_TEMP_MOTOR,// Motor overtemperature
+FAULT_CODE_GATE_DRIVER_OVER_VOLTAGE,// Driver overvoltage
+FAULT_CODE_GATE_DRIVER_UNDER_VOLTAGE,//Driver undervoltage
+FAULT_CODE_MCU_UNDER_VOLTAGE,// MCU undervoltage
+FAULT_CODE_BOOTING_FROM_WATCHDOG_RESET,// Undervoltage
+FAULT_CODE_ENCODER_SPI,// SPI encoder fault
+FAULT_CODE_ENCODER_SINCOS_BELOW_MIN_AMPLITUDE,// Encoder below minimum
+amplitude
+FAULT_CODE_ENCODER_SINCOS_ABOVE_MAX_AMPLITUDE,//Encoder above maximum
+amplitude
+FAULT_CODE_FLASH_CORRUPTION,// Flash fault
+FAULT_CODE_HIGH_OFFSET_CURRENT_SENSOR_1,// Current sampling channel 1 fault
+FAULT_CODE_HIGH_OFFSET_CURRENT_SENSOR_2,// Current sampling channel 2 fault
+FAULT_CODE_HIGH_OFFSET_CURRENT_SENSOR_3,// Current sampling channel 3 fault
+FAULT_CODE_UNBALANCED_CURRENTS,// Unbalanced currents
+} mc_fault_code;
+
+
+  
+  
+  
+  
+  
+Motor default params by motor type:
+-------------------------------------------------
+struct AK80_9
+{
+    float P_min = -12.5;
+    float P_max = 12.5;
+    float V_min = -50.0;
+    float V_max = 50.0;
+    float T_min = -18.0;
+    float T_max = 18.0;
+    float Kp_min = 0.0;
+    float Kp_max = 500.0;
+    float Kd_min = 0.0;
+    float Kd_max = 5.0;
+    float Kt_TMotor = 0.091;
+    float Current_Factor = 0.59;
+    float Kt_Actual = 0.115;
+    int Gear_Ratio = 9;
+    bool Use_derived_torque_constants = true;
+    float a_hat[5] = {0.0, 1.15605006e+00, 4.17389589e-04, 2.68556072e-01, 4.90424140e-02};
+};
+
+struct AK10_9
+{
+    float P_min = -12.5;
+    float P_max = 12.5;
+    float V_min = -50.0;
+    float V_max = 50.0;
+    float T_min = -65.0;
+    float T_max = 65.0;
+    float Kp_min = 0.0;
+    float Kp_max = 500.0;
+    float Kd_min = 0.0;
+    float Kd_max = 5.0;
+    float Kt_TMotor = 0.16;
+    float Current_Factor = 0.59;
+    float Kt_Actual = 0.16;
+    int Gear_Ratio = 9;
+    bool Use_derived_torque_constants = false;
+    float a_hat[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+};
+
+struct AK60_6
+{
+    float P_min = -12.5;
+    float P_max = 12.5;
+    float V_min = -45.0;
+    float V_max = 45.0;
+    float T_min = -15.0;
+    float T_max = 15.0;
+    float Kp_min = 0.0;
+    float Kp_max = 500.0;
+    float Kd_min = 0.0;
+    float Kd_max = 5.0;
+    float Kt_TMotor = 0.068;
+    float Current_Factor = 0.59;
+    float Kt_Actual = 0.087;
+    int Gear_Ratio = 9;
+    bool Use_derived_torque_constants = false;
+    float a_hat[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+};
+
+struct AK70_10
+{
+    float P_min = -12.5;
+    float P_max = 12.5;
+    float V_min = -50.0;
+    float V_max = 50.0;
+    float T_min = -25.0;
+    float T_max = 25.0;
+    float Kp_min = 0.0;
+    float Kp_max = 500.0;
+    float Kd_min = 0.0;
+    float Kd_max = 5.0;
+    float Kt_TMotor = 0.095;
+    float Current_Factor = 0.59;
+    float Kt_Actual = 0.122;
+    int Gear_Ratio = 10;
+    bool Use_derived_torque_constants = false;
+    float a_hat[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+};
+
+struct AK80_6
+{
+    float P_min = -12.5;
+    float P_max = 12.5;
+    float V_min = -76.0;
+    float V_max = 76.0;
+    float T_min = -12.0;
+    float T_max = 12.0;
+    float Kp_min = 0.0;
+    float Kp_max = 500.0;
+    float Kd_min = 0.0;
+    float Kd_max = 5.0;
+    float Kt_TMotor = 0.091;
+    float Current_Factor = 0.59;
+    float Kt_Actual = 0.017;
+    int Gear_Ratio = 6;
+    bool Use_derived_torque_constants = false;
+    float a_hat[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+};
+
+struct AK80_64
+{
+    float P_min = -12.5;
+    float P_max = 12.5;
+    float V_min = -8.0;
+    float V_max = 8.0;
+    float T_min = -144.0;
+    float T_max = 144.0;
+    float Kp_min = 0.0;
+    float Kp_max = 500.0;
+    float Kd_min = 0.0;
+    float Kd_max = 5.0;
+    float Kt_TMotor = 0.119;
+    float Current_Factor = 0.59;
+    float Kt_Actual = 0.153;
+    int Gear_Ratio = 80;
+    bool Use_derived_torque_constants = false;
+    float a_hat[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+};
+
+
+
+
+
+
+
+
+
+
+
+
+-----------------------------------------
+
+Serial checksum:
+unsigned short crc16(unsigned char *buf, unsigned int len) {
+unsigned int i;
+unsigned short cksum = 0;
+for (i = 0; i < len; i++) {
+cksum = crc16_tab[(((cksum >> 8) ^ *buf++) & 0xFF)] ^ (cksum << 8);
+}
+return cksum;
+}
+const unsigned short crc16_tab[] = { 0x0000, 0x1021, 0x2042, 0x3063, 0x4084,
+0x50a5, 0x60c6, 0x70e7, 0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad,
+0xe1ce, 0xf1ef, 0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7,
+0x62d6, 0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de,
+0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485, 0xa56a,
+0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d, 0x3653, 0x2672,
+0x1611, 0x0630, 0x76d7, 0x66f6, 0x5695, 0x46b4, 0xb75b, 0xa77a, 0x9719,
+0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc, 0x48c4, 0x58e5, 0x6886, 0x78a7,
+0x0840, 0x1861, 0x2802, 0x3823, 0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948,
+0x9969, 0xa90a, 0xb92b, 0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50,
+0x3a33, 0x2a12, 0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e, 0x9b79, 0x8b58, 0xbb3b,
+0xab1a, 0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41,
+0xedae, 0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49, 0x7e97,
+0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32, 0x1e51, 0x0e70, 0xff9f, 0xefbe,
+0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78, 0x9188, 0x81a9, 0xb1ca,
+0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f, 0x1080, 0x00a1, 0x30c2, 0x20e3,
+0x5004, 0x4025, 0x7046, 0x6067, 0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d,
+0xd31c, 0xe37f, 0xf35e, 0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235, 0x5214,
+0x6277, 0x7256, 0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c,
+0xc50d, 0x34e2, 0x24c3, 0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
+0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d, 0xd73c, 0x26d3,
+0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634, 0xd94c, 0xc96d,
+0xf90e, 0xe92f, 0x99c8, 0x89e9, 0xb98a, 0xa9ab, 0x5844, 0x4865, 0x7806,
+0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3, 0xcb7d, 0xdb5c, 0xeb3f, 0xfb1e,
+0x8bf9, 0x9bd8, 0xabbb, 0xbb9a, 0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1,
+0x1ad0, 0x2ab3, 0x3a92, 0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b,
+0x9de8, 0x8dc9, 0x7c26, 0x6c07, 0x5c64, 0x4c45, 0x3ca2, 0x2c83, 0x1ce0,
+0x0cc1, 0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
+0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0 };
